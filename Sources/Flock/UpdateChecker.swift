@@ -21,6 +21,13 @@ final class UpdateChecker {
 
     // Local changelog - update manually when cutting a release
     static let localChangelog: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.11.0", date: "2026-06-09", changes: [
+            "Multi-CLI agent panes -- Flock now detects installed agent CLIs (Codex, Gemini, opencode, Aider, Goose, Amp, Copilot, Cursor Agent) and offers a New Pane command for each in the command palette",
+            "Per-CLI accent colors on panes and tab dots so a mixed grid reads at a glance",
+            "Agent panes restore with your session layout and fall back to a shell pane if the CLI was uninstalled",
+            "Activity indicators now work for all agent panes, not just Claude",
+            "Broadcast mode reaches every agent pane -- send one prompt to all models at once",
+        ]),
         ChangelogEntry(version: "0.10.0", date: "2026-05-14", changes: [
             "Removed agent mode -- the kanban task queue is gone in favor of just running Claude sessions directly in panes",
             "Removed the memory system and .flock-context.md syncing",
@@ -245,5 +252,5 @@ final class UpdateChecker {
 
 // Fallback version constant (used when not running as .app bundle)
 enum FlockVersion {
-    static let current = "0.10.0"
+    static let current = "0.11.0"
 }
