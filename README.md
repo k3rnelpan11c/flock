@@ -125,7 +125,7 @@ that's it. app goes to `/Applications`, cli goes to `flock`.
 
 ## under the hood
 
-native swift. no electron. terminal panes are powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm), and markdown panes are native editable text views that autosave to disk. agent mode talks to claude code over `stream-json` and parses every event in real time to build the timelines and kanban board. prompt compression runs through [wren](https://github.com/baahaus/wren), a LoRA fine-tuned model on Apple Silicon via MLX. it's fast because it's not pretending to be a website.
+native swift. no electron. terminal panes are powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm), and markdown panes are native editable text views that autosave to disk. claude panes watch terminal output in real time to surface live state and the change log overlay. prompt compression runs through [wren](https://github.com/baahaus/wren), a LoRA fine-tuned model on Apple Silicon via MLX. it's fast because it's not pretending to be a website.
 
 <br>
 

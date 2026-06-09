@@ -613,62 +613,6 @@
     }
 
     /* ============================================
-       AGENT TIMELINE
-       ============================================ */
-    .timeline {
-      margin: 1.5rem 0;
-      max-width: 500px;
-    }
-
-    .timeline-event {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 6px 0;
-      border-left: 2px solid var(--border);
-      padding-left: 16px;
-      position: relative;
-    }
-
-    .timeline-event::before {
-      content: '';
-      position: absolute;
-      left: -5px;
-      width: 8px;
-      height: 8px;
-      background: var(--bg);
-      border: 2px solid var(--accent);
-    }
-
-    .timeline-badge {
-      font-family: 'Menlo', 'SF Mono', monospace;
-      font-size: 10px;
-      font-weight: 700;
-      width: 24px;
-      height: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 2px solid;
-      flex-shrink: 0;
-    }
-
-    .timeline-badge.think  { color: var(--ink-faint); border-color: var(--ink-faint); }
-    .timeline-badge.read   { color: var(--blue); border-color: var(--blue); }
-    .timeline-badge.edit   { color: var(--green); border-color: var(--green); }
-    .timeline-badge.write  { color: #8B5CF6; border-color: #8B5CF6; }
-    .timeline-badge.bash   { color: var(--accent); border-color: var(--accent); }
-    .timeline-badge.search { color: #D97706; border-color: #D97706; }
-
-    .timeline-text {
-      font-family: 'VT323', monospace;
-      font-size: 1.05rem;
-      color: var(--ink-soft);
-    }
-
-    /* (kanban styles removed -- agent mode uses three-panel layout) */
-
-    /* ============================================
        INFO CARDS
        ============================================ */
     .info-card {
@@ -851,7 +795,6 @@
       .mobile-menu-btn { display: block; }
       .shortcut-grid { grid-template-columns: repeat(2, 1fr); }
       .feature-row { grid-template-columns: 1fr; }
-      .kanban-demo { grid-template-columns: 1fr; }
       .theme-grid { grid-template-columns: 1fr 1fr; }
     }
 
