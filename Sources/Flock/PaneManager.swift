@@ -1,13 +1,27 @@
 import AppKit
 
-enum PaneType {
+enum PaneType: Equatable {
     case claude, shell, markdown
+    case agent(AgentCLI)
+
     var label: String {
         switch self {
         case .claude: return "claude"
         case .shell:  return "shell"
         case .markdown: return "markdown"
+        case .agent(let cli): return cli.id
         }
+    }
+
+    /// True for any pane running an AI agent (Claude or another CLI).
+    var isAgent: Bool {
+        if case .agent = self { return true }
+        return self == .claude
+    }
+
+    var agentCLI: AgentCLI? {
+        if case .agent(let cli) = self { return cli }
+        return nil
     }
 }
 
@@ -331,8 +345,14 @@ class PaneManager {
         let sessionId: String? = pane.paneType == .claude
             ? termPane?.resumeSessionId ?? "resume"
             : nil
+        let typeString: String
+        switch pane.paneType {
+        case .claude: typeString = "claude"
+        case .agent(let cli): typeString = "agent:\(cli.id)"
+        default: typeString = "shell"
+        }
         return SessionPane(
-            type: pane.paneType == .claude ? "claude" : "shell",
+            type: typeString,
             workingDirectory: dir,
             customName: pane.customName,
             sessionId: sessionId
@@ -391,7 +411,14 @@ class PaneManager {
             pane.customName = sp.customName
             return pane
         }
-        let type: PaneType = sp.type == "shell" ? .shell : .claude
+        let type: PaneType
+        if sp.type.hasPrefix("agent:") {
+            // Fall back to a plain shell if the CLI is no longer recognized
+            let id = String(sp.type.dropFirst("agent:".count))
+            type = AgentCLI.byId(id).map { .agent($0) } ?? .shell
+        } else {
+            type = sp.type == "shell" ? .shell : .claude
+        }
         let pane = TerminalPane(type: type, manager: self, workingDirectory: sp.workingDirectory)
         pane.customName = sp.customName
         if type == .claude, let sid = sp.sessionId {

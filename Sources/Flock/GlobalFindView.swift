@@ -284,7 +284,7 @@ private class GlobalFindResultsView: NSView {
             }
 
             // Pane type icon
-            let iconName = result.pane.paneType == .claude ? "brain" : (result.pane.paneType == .markdown ? "doc.text" : "terminal")
+            let iconName = result.pane.paneType.isAgent ? "brain" : (result.pane.paneType == .markdown ? "doc.text" : "terminal")
             let iconColor = result.hasMatch ? Theme.accent : Theme.textTertiary
             if let img = NSImage(systemSymbolName: iconName, accessibilityDescription: nil) {
                 let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)

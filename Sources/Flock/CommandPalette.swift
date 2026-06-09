@@ -31,9 +31,8 @@ class CommandPalette {
         guard !isVisible, let contentView = window.contentView else { return }
         isVisible = true
 
-        if actions.isEmpty {
-            registerActions(defaultActions())
-        }
+        // Rebuild every time -- the set of detected agent CLIs can change
+        registerActions(defaultActions())
 
         // Backdrop
         let backdrop = CommandBackdropView(frame: contentView.bounds)
@@ -131,6 +130,11 @@ class CommandPalette {
             CommandAction(name: "New Shell Pane", shortcut: "⌘⇧T", category: "Panes") { [weak self] in
                 self?.paneManager?.addPane(type: .shell)
             },
+        ] + AgentCLIRegistry.shared.installed.map { cli in
+            CommandAction(name: "New \(cli.displayName) Pane", shortcut: "", category: "Panes") { [weak self] in
+                self?.paneManager?.addPane(type: .agent(cli))
+            }
+        } + [
             CommandAction(name: "New Markdown File", shortcut: "\u{2318}N", category: "Files") { [weak self] in
                 self?.createMarkdownFile()
             },

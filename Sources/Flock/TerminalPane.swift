@@ -100,7 +100,14 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
             terminalView.startProcess(executable: shell, execName: "-\(name)", currentDirectory: cwd)
         }
 
-        if type == .claude {
+        if case .agent(let cli) = type {
+            contextDirectory = workingDirectory ?? FileManager.default.homeDirectoryForCurrentUser.path
+            accentColor = cli.color
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                self?.sendText("\(cli.launchCommand)\n")
+            }
+        } else if type == .claude {
             contextDirectory = workingDirectory ?? FileManager.default.homeDirectoryForCurrentUser.path
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
@@ -415,7 +422,7 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
     // MARK: - Agent activity detection
 
     func didReceiveOutput(byteCount: Int) {
-        guard paneType == .claude && Settings.shared.showActivityIndicators else { return }
+        guard paneType.isAgent && Settings.shared.showActivityIndicators else { return }
 
         // Ignore keyboard echo — if user typed recently, this is likely just echo
         let timeSinceInput = CFAbsoluteTimeGetCurrent() - terminalView.lastUserInputTime

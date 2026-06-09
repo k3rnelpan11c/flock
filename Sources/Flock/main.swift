@@ -15,6 +15,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Notifications
         FlockNotifications.setup()
 
+        // Detect installed agent CLIs (codex, gemini, opencode, ...) in the background
+        AgentCLIRegistry.shared.refresh()
+
         // Load saved theme
         let savedId = Settings.shared.themeId
         if let theme = Themes.all.first(where: { $0.id == savedId }) {
