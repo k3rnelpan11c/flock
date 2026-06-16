@@ -62,6 +62,7 @@ class PaneManager {
     weak var tabBar: TabBarView?
     weak var gridContainer: GridContainer?
     weak var statusBar: StatusBarView?
+    weak var workspaceBar: WorkspaceBarView?
     weak var window: NSWindow?
 
     // Find bar
@@ -355,6 +356,7 @@ class PaneManager {
         guard !trimmed.isEmpty else { return }
         activeWorkspace.name = trimmed
         updateWindowTitle()
+        workspaceBar?.update()
         statusBar?.update()
     }
 
@@ -379,6 +381,7 @@ class PaneManager {
             tabBar?.update()
             statusBar?.update()
         }
+        workspaceBar?.update()
         updateWindowTitle()
     }
 
@@ -428,12 +431,20 @@ class PaneManager {
     }
 
     func saveSession() {
-        // Capture each Claude pane's session ID from its running process before saving
-        for pane in panes {
-            (pane as? TerminalPane)?.captureSessionId()
+        // Capture each Claude pane's session ID from its running process before
+        // saving — across every workspace, not just the active one.
+        for ws in workspaces {
+            for pane in ws.panes { (pane as? TerminalPane)?.captureSessionId() }
         }
-        let tabs = tabNodes.map { encodeNode($0) }
-        SessionRestore.save(tabs: tabs, activeIndex: activePaneIndex)
+        let datas = workspaces.map { workspaceData(for: $0) }
+        WorkspaceStore.saveAll(workspaces: datas, activeId: activeWorkspace.id)
+    }
+
+    private func workspaceData(for ws: Workspace) -> WorkspaceData {
+        let tabs = ws.tabNodes.map { encodeNode($0) }
+        let layout = SessionLayout(panes: nil, activeIndex: ws.activePaneIndex, tabs: tabs)
+        return WorkspaceData(id: ws.id, name: ws.name, colorHex: ws.colorHex,
+                             createdAt: ws.createdAt, lastUsedAt: ws.lastUsedAt, layout: layout)
     }
 
     private func encodeNode(_ node: SplitNode) -> SessionNode {
@@ -478,34 +489,33 @@ class PaneManager {
     }
 
     func restoreSession() {
-        guard let layout = SessionRestore.restore() else { return }
+        guard let loaded = WorkspaceStore.loadAll() else { return }
+        var restored: [Workspace] = []
+        for wd in loaded.workspaces {
+            let ws = Workspace(id: wd.id, name: wd.name, colorHex: wd.colorHex,
+                               createdAt: wd.createdAt, lastUsedAt: wd.lastUsedAt)
+            buildPanes(into: ws, from: wd.layout)
+            restored.append(ws)
+        }
+        guard !restored.isEmpty else { return }
+        workspaces = restored
+        activeWorkspace = restored.first { $0.id == loaded.activeId } ?? restored[0]
+        // Attach only the active workspace; the rest stay alive but detached.
+        attachActiveWorkspace()
+    }
 
+    /// Build a workspace's tab tree + panes from saved layout WITHOUT attaching
+    /// to the grid (background workspaces stay alive but detached until visited).
+    private func buildPanes(into ws: Workspace, from layout: SessionLayout) {
         if let tabs = layout.tabs {
-            // New tree-based restore
-            for tab in tabs {
-                let node = restoreNode(tab)
-                tabNodes.append(node)
-                for pane in node.allLeaves {
-                    gridContainer?.addSubview(pane)
-                }
-            }
-            rebuildPanesFromNodes()
-        } else if let flatPanes = layout.panes {
-            // Legacy flat restore
-            for sp in flatPanes {
-                let pane = restorePane(sp)
-                panes.append(pane)
-                tabNodes.append(SplitNode(pane: pane))
-                gridContainer?.addSubview(pane)
-            }
+            for tab in tabs { ws.tabNodes.append(restoreNode(tab)) }
+        } else if let flat = layout.panes {
+            for sp in flat { ws.tabNodes.append(SplitNode(pane: restorePane(sp))) }
         }
-
-        if layout.activeIndex >= 0, layout.activeIndex < panes.count {
-            focusPane(at: layout.activeIndex)
-        } else if !panes.isEmpty {
-            focusPane(at: 0)
-        }
-        layoutAndUpdate(animated: false)
+        ws.panes = ws.tabNodes.flatMap { $0.allLeaves }
+        ws.activePaneIndex = ws.panes.isEmpty
+            ? -1
+            : min(max(0, layout.activeIndex), ws.panes.count - 1)
     }
 
     private func restoreNode(_ sessionNode: SessionNode) -> SplitNode {

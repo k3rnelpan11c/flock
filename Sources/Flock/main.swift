@@ -10,6 +10,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var clickMonitor: Any?
     private var focusObserver: Any?
     private var settingsObserver: Any?
+    private var autosaveTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Notifications
@@ -55,6 +56,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Global hotkey -- always create so it can respond to settings changes
         hotkeyManager = GlobalHotkeyManager(window: mainWindow)
+
+        // Periodic autosave so multiple workspaces survive a crash (the
+        // terminate handler also saves).
+        autosaveTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            self?.paneManager.saveSession()
+        }
 
         // Post-update changelog tab (before update check so it doesn't stack with the alert)
         let previousVersion = Settings.shared.lastRunVersion
@@ -116,6 +123,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let monitor = clickMonitor { NSEvent.removeMonitor(monitor); clickMonitor = nil }
         if let observer = focusObserver { NotificationCenter.default.removeObserver(observer); focusObserver = nil }
         if let observer = settingsObserver { NotificationCenter.default.removeObserver(observer); settingsObserver = nil }
+        autosaveTimer?.invalidate(); autosaveTimer = nil
 
         paneManager.saveSession()
         paneManager.shutdownAllWorkspaces()
