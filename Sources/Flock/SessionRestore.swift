@@ -5,6 +5,7 @@ struct SessionPane: Codable {
     let workingDirectory: String?
     let customName: String?
     let sessionId: String?
+    let draft: String?      // unsent shell command line, restored on next launch
 }
 
 /// Recursive node that mirrors SplitNode for serialization.

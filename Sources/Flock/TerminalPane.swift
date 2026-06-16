@@ -56,7 +56,7 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
 
     override var firstResponderView: NSView { terminalView }
 
-    init(type: PaneType, manager: PaneManager, workingDirectory: String? = nil) {
+    init(type: PaneType, manager: PaneManager, workingDirectory: String? = nil, draft: String? = nil) {
         self.terminalView = FlockTerminalView(frame: .zero)
         self.agentProcessLive = type.isAgent
         super.init(type: type, manager: manager)
@@ -102,7 +102,7 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
         let name = (shell as NSString).lastPathComponent
         let cwd = workingDirectory ?? ProcessInfo.processInfo.environment["HOME"]
 
-        if let enhanced = ShellEnhancer.enhancedEnvironment(workingDirectory: workingDirectory) {
+        if let enhanced = ShellEnhancer.enhancedEnvironment(workingDirectory: workingDirectory, restoreDraft: draft) {
             self.zdotdir = enhanced.zdotdir
             terminalView.startProcess(executable: shell, environment: enhanced.env, execName: "-\(name)", currentDirectory: cwd)
         } else {
@@ -682,6 +682,16 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
             }
         }
         return false
+    }
+
+    /// The shell's current unsent command line (mirrored by the injected zsh
+    /// config), or nil if empty / unavailable. Only meaningful when the pane is
+    /// a shell at its prompt.
+    func currentInputDraft() -> String? {
+        guard let zdotdir else { return nil }
+        guard let s = try? String(contentsOfFile: zdotdir + "/buffer", encoding: .utf8),
+              !s.isEmpty else { return nil }
+        return s
     }
 
     override func shutdown() {
