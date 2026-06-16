@@ -79,6 +79,13 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
         // Terminal
         let fontSize = Settings.shared.fontSize
         terminalView.nativeBackgroundColor = Theme.terminalBg
+        // Keep the view's layer backing in sync with the themed terminal bg.
+        // SwiftTerm only stamps layer.backgroundColor once at init (from its
+        // default dark color) and its nativeBackgroundColor setter never
+        // refreshes it. With disableFullRedrawOnAnyChanges, a resize repaints
+        // only dirty cells, so the un-repainted area would otherwise expose the
+        // stale black backing (e.g. the black flash when un-maximizing a pane).
+        terminalView.layer?.backgroundColor = Theme.terminalBg.cgColor
         terminalView.nativeForegroundColor = Theme.terminalFg
         terminalView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
         installAnsiColors()
@@ -157,6 +164,7 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
 
     override func themeDidChange() {
         terminalView.nativeBackgroundColor = Theme.terminalBg
+        terminalView.layer?.backgroundColor = Theme.terminalBg.cgColor
         terminalView.nativeForegroundColor = Theme.terminalFg
         installAnsiColors()
         terminalView.setNeedsDisplay(terminalView.bounds)
