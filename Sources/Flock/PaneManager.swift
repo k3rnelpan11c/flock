@@ -28,13 +28,41 @@ enum PaneType: Equatable {
 enum Direction { case left, right, up, down }
 
 class PaneManager {
-    private(set) var panes: [FlockPane] = []
-    private(set) var activePaneIndex: Int = -1
-    private(set) var isMaximized: Bool = false
+    // MARK: - Workspaces
+    // Each workspace keeps its panes (views + processes) alive while inactive;
+    // switching detaches the current panes from the grid and attaches the next.
+    private(set) var workspaces: [Workspace]
+    private(set) var activeWorkspace: Workspace
+
+    // Per-workspace state, proxied to the active workspace so the view layer
+    // (tabBar / statusBar / gridContainer) and every existing method keep
+    // working unchanged. Only mutated from within PaneManager.
+    var panes: [FlockPane] {
+        get { activeWorkspace.panes }
+        set { activeWorkspace.panes = newValue }
+    }
+    var activePaneIndex: Int {
+        get { activeWorkspace.activePaneIndex }
+        set { activeWorkspace.activePaneIndex = newValue }
+    }
+    var isMaximized: Bool {
+        get { activeWorkspace.isMaximized }
+        set { activeWorkspace.isMaximized = newValue }
+    }
+    var isBroadcasting: Bool {
+        get { activeWorkspace.isBroadcasting }
+        set { activeWorkspace.isBroadcasting = newValue }
+    }
+    // Split pane tree roots (one per tab) — per active workspace.
+    var tabNodes: [SplitNode] {
+        get { activeWorkspace.tabNodes }
+        set { activeWorkspace.tabNodes = newValue }
+    }
 
     weak var tabBar: TabBarView?
     weak var gridContainer: GridContainer?
     weak var statusBar: StatusBarView?
+    weak var window: NSWindow?
 
     // Find bar
     private var findBar: FindBarView?
@@ -42,11 +70,11 @@ class PaneManager {
     // Global find
     private let globalFind = GlobalFindView()
 
-    // Broadcast mode
-    private(set) var isBroadcasting: Bool = false
-
-    // Split pane tree roots (one per tab)
-    private(set) var tabNodes: [SplitNode] = []
+    init() {
+        let initial = Workspace(name: "Main")
+        self.workspaces = [initial]
+        self.activeWorkspace = initial
+    }
 
     // MARK: - Pane lifecycle
 
@@ -267,6 +295,96 @@ class PaneManager {
                 pane.layer?.add(pulse, forKey: "broadcastPulse")
             }
         }
+    }
+
+    // MARK: - Workspaces
+
+    @discardableResult
+    func addWorkspace(name: String? = nil) -> Workspace {
+        let ws = Workspace(name: name ?? "Workspace \(workspaces.count + 1)")
+        workspaces.append(ws)
+        switchTo(ws)
+        // A fresh workspace starts empty — give it a default pane.
+        if ws.panes.isEmpty { addPane(type: .claude) }
+        return ws
+    }
+
+    func switchTo(_ ws: Workspace) {
+        guard ws !== activeWorkspace, workspaces.contains(where: { $0 === ws }) else { return }
+        closeFindBar()
+        // Detach (don't shut down) the current workspace's panes — the processes
+        // keep running in the background.
+        for pane in activeWorkspace.panes {
+            pane.isFocused = false
+            pane.removeFromSuperview()
+        }
+        activeWorkspace.lastUsedAt = Date()
+        activeWorkspace = ws
+        ws.lastUsedAt = Date()
+        attachActiveWorkspace()
+    }
+
+    func switchToWorkspace(at index: Int) {
+        guard index >= 0, index < workspaces.count else { return }
+        switchTo(workspaces[index])
+    }
+
+    func cycleWorkspace(forward: Bool) {
+        guard workspaces.count > 1,
+              let i = workspaces.firstIndex(where: { $0 === activeWorkspace }) else { return }
+        let n = workspaces.count
+        switchTo(workspaces[forward ? (i + 1) % n : (i - 1 + n) % n])
+    }
+
+    func closeActiveWorkspace() {
+        guard workspaces.count > 1 else { return }   // always keep at least one
+        let closing = activeWorkspace
+        for pane in closing.panes {
+            pane.shutdown()
+            pane.removeFromSuperview()
+        }
+        let idx = workspaces.firstIndex { $0 === closing } ?? 0
+        workspaces.removeAll { $0 === closing }
+        activeWorkspace = workspaces[min(idx, workspaces.count - 1)]
+        activeWorkspace.lastUsedAt = Date()
+        attachActiveWorkspace()
+    }
+
+    func renameActiveWorkspace(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        activeWorkspace.name = trimmed
+        updateWindowTitle()
+        statusBar?.update()
+    }
+
+    /// Shut down every pane across all workspaces (called on app terminate so
+    /// background workspaces don't leave orphan processes).
+    func shutdownAllWorkspaces() {
+        for ws in workspaces {
+            for pane in ws.panes { pane.shutdown() }
+        }
+    }
+
+    /// Re-attach the active workspace's panes to the grid and restore its view
+    /// state (focus, layout, title bar).
+    private func attachActiveWorkspace() {
+        for pane in activeWorkspace.panes { gridContainer?.addSubview(pane) }
+        layoutAndUpdate(animated: false)
+        if activePaneIndex >= 0, activePaneIndex < panes.count {
+            focusPane(at: activePaneIndex)
+        } else if !panes.isEmpty {
+            focusPane(at: 0)
+        } else {
+            tabBar?.update()
+            statusBar?.update()
+        }
+        updateWindowTitle()
+    }
+
+    private func updateWindowTitle() {
+        let title: String = workspaces.count > 1 ? "\(activeWorkspace.name) — Flock" : "Flock"
+        window?.title = title
     }
 
     // MARK: - Split Panes

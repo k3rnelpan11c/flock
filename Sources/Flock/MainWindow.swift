@@ -29,6 +29,7 @@ class FlockWindow: NSWindow {
         paneManager.tabBar = tabBar
         paneManager.gridContainer = gridContainer
         paneManager.statusBar = statusBar
+        paneManager.window = self
 
         titlebarAppearsTransparent = true
         titleVisibility = .hidden

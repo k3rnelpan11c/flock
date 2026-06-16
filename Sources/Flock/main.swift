@@ -118,7 +118,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let observer = settingsObserver { NotificationCenter.default.removeObserver(observer); settingsObserver = nil }
 
         paneManager.saveSession()
-        paneManager.panes.forEach { $0.shutdown() }
+        paneManager.shutdownAllWorkspaces()
         return .terminateNow
     }
 
@@ -190,6 +190,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func toggleBroadcast(_ sender: Any?) {
         paneManager.toggleBroadcast()
+    }
+
+    // MARK: - Workspace actions
+
+    @objc func newWorkspace(_ sender: Any?)   { paneManager.addWorkspace() }
+    @objc func closeWorkspace(_ sender: Any?) { paneManager.closeActiveWorkspace() }
+    @objc func nextWorkspace(_ sender: Any?)  { paneManager.cycleWorkspace(forward: true) }
+    @objc func prevWorkspace(_ sender: Any?)  { paneManager.cycleWorkspace(forward: false) }
+
+    @objc func renameWorkspace(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Rename Workspace"
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        field.stringValue = paneManager.activeWorkspace.name
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            paneManager.renameActiveWorkspace(field.stringValue)
+        }
     }
 
     @objc func showGlobalFind(_ sender: Any?) {
@@ -324,6 +344,21 @@ func buildMainMenu(target: AppDelegate) -> NSMenu {
             key: String(UnicodeScalar(0xF700)!), target: target)
     addItem(paneMenu, "Navigate Down",  #selector(AppDelegate.navigateDown(_:)),
             key: String(UnicodeScalar(0xF701)!), target: target)
+
+    // -- Workspace menu --
+    let wsItem = NSMenuItem(); main.addItem(wsItem)
+    let wsMenu = NSMenu(title: "Workspace"); wsItem.submenu = wsMenu
+    addItem(wsMenu, "New Workspace", #selector(AppDelegate.newWorkspace(_:)),
+            key: "n", mods: [.command, .control], target: target)
+    addItem(wsMenu, "Close Workspace", #selector(AppDelegate.closeWorkspace(_:)),
+            key: "w", mods: [.command, .control], target: target)
+    addItem(wsMenu, "Rename Workspace…", #selector(AppDelegate.renameWorkspace(_:)),
+            key: "", mods: [], target: target)
+    wsMenu.addItem(.separator())
+    addItem(wsMenu, "Next Workspace", #selector(AppDelegate.nextWorkspace(_:)),
+            key: "]", mods: [.command, .control], target: target)
+    addItem(wsMenu, "Previous Workspace", #selector(AppDelegate.prevWorkspace(_:)),
+            key: "[", mods: [.command, .control], target: target)
 
     return main
 }
