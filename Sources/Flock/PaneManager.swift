@@ -341,14 +341,18 @@ class PaneManager {
         let dir = pane.currentDirectory
             ?? termPane?.processWorkingDirectory()
             ?? termPane?.contextDirectory
+        // If the agent process has exited, the pane is really a shell now — save
+        // it as one so restore opens a shell in this directory instead of trying
+        // to relaunch/resume the agent.
+        let agentLive = termPane?.agentProcessLive ?? true
         // Use the session ID captured from the process's open files at shutdown
-        let sessionId: String? = pane.paneType == .claude
+        let sessionId: String? = (pane.paneType == .claude && agentLive)
             ? termPane?.resumeSessionId ?? "resume"
             : nil
         let typeString: String
         switch pane.paneType {
-        case .claude: typeString = "claude"
-        case .agent(let cli): typeString = "agent:\(cli.id)"
+        case .claude: typeString = agentLive ? "claude" : "shell"
+        case .agent(let cli): typeString = agentLive ? "agent:\(cli.id)" : "shell"
         default: typeString = "shell"
         }
         return SessionPane(

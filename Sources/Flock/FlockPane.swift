@@ -212,11 +212,15 @@ class FlockPane: NSView {
 
     // MARK: - Claude border state
 
+    /// Whether to render the Claude session borders. TerminalPane overrides this
+    /// to drop them once the Claude process exits (pane fell back to a shell).
+    var claudeBordersActive: Bool { paneType == .claude && claudeSessionBordersEnabled }
+
     /// Updates the border color and width based on Claude activity.
     /// Red = actively outputting, Blue = idle/waiting for prompt.
     func updateBorderForState() {
         guard paneType == .claude else { return }
-        guard claudeSessionBordersEnabled else {
+        guard claudeBordersActive else {
             layer?.borderWidth = 1
             layer?.borderColor = (isFocused ? Theme.borderFocus : Theme.borderRest).cgColor
             return
@@ -261,7 +265,7 @@ class FlockPane: NSView {
         CATransaction.setAnimationTimingFunction(Theme.Anim.snappyTimingFunction)
 
         // If Claude pane is actively working, keep the red border
-        let claudeIsWorking = paneType == .claude && claudeSessionBordersEnabled && (isAgentActive || agentState == .error)
+        let claudeIsWorking = claudeBordersActive && (isAgentActive || agentState == .error)
 
         if !claudeIsWorking {
             layer?.borderWidth = 1
@@ -272,7 +276,7 @@ class FlockPane: NSView {
             layer?.shadowRadius = Theme.Shadow.Focus.contact.radius
             layer?.shadowOffset = Theme.Shadow.Focus.contact.offset
             if !claudeIsWorking {
-                layer?.borderColor = (paneType == .claude && claudeSessionBordersEnabled ? NSColor(hex: 0x6AB0FF) : Theme.borderFocus).cgColor
+                layer?.borderColor = (claudeBordersActive ? NSColor(hex: 0x6AB0FF) : Theme.borderFocus).cgColor
             }
             ambientShadowLayer.shadowOpacity = Theme.Shadow.Focus.ambient.opacity
             ambientShadowLayer.shadowRadius = Theme.Shadow.Focus.ambient.radius
@@ -283,7 +287,7 @@ class FlockPane: NSView {
             layer?.shadowRadius = Theme.Shadow.Rest.contact.radius
             layer?.shadowOffset = Theme.Shadow.Rest.contact.offset
             if !claudeIsWorking {
-                layer?.borderColor = (paneType == .claude && claudeSessionBordersEnabled ? NSColor(hex: 0x4A90D9) : Theme.borderRest).cgColor
+                layer?.borderColor = (claudeBordersActive ? NSColor(hex: 0x4A90D9) : Theme.borderRest).cgColor
             }
             ambientShadowLayer.shadowOpacity = Theme.Shadow.Rest.ambient.opacity
             ambientShadowLayer.shadowRadius = Theme.Shadow.Rest.ambient.radius

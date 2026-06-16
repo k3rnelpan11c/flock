@@ -28,6 +28,14 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
     private var costStatsView: CostStatsView?
     private(set) var isCostStatsVisible: Bool = false
 
+    // Agent-process liveness (Claude / agent panes only). True while the agent
+    // process is actually running; flips to false once it exits and the pane is
+    // back to a bare shell — drives the status label, borders, and what we save.
+    private(set) var agentProcessLive: Bool
+    private var hasSeenAgentAlive = false
+    private var agentPollTimer: Timer?
+    private var agentPollCount = 0
+
     // Agent state parsing (Claude panes only)
     let outputParser = ClaudeOutputParser()
 
@@ -50,6 +58,7 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
 
     init(type: PaneType, manager: PaneManager, workingDirectory: String? = nil) {
         self.terminalView = FlockTerminalView(frame: .zero)
+        self.agentProcessLive = type.isAgent
         super.init(type: type, manager: manager)
 
         terminalView.owningPane = self
@@ -133,6 +142,9 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
             }
         }
 
+        // Watch whether the agent process is alive (Claude / agent panes).
+        if type.isAgent { startAgentWatch() }
+
         // Listen for changes
         NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged(_:)),
                                                name: Settings.didChange, object: nil)
@@ -180,10 +192,11 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
     // MARK: - Title bar
 
     override func updateTitleBar() {
-        let stateLabel = (agentState != .idle) ? agentState.label : nil
-        titleProcessLabel.stringValue = stateLabel ?? processTitle ?? paneType.label
-        titleProcessLabel.textColor = (agentState == .waiting) ? Theme.accent
-            : (agentState == .error) ? NSColor(hex: 0xFF3B30)
+        let agentLive = isAgentDisplayActive
+        let stateLabel = (agentLive && agentState != .idle) ? agentState.label : nil
+        titleProcessLabel.stringValue = stateLabel ?? processTitle ?? displayLabel
+        titleProcessLabel.textColor = (agentLive && agentState == .waiting) ? Theme.accent
+            : (agentLive && agentState == .error) ? NSColor(hex: 0xFF3B30)
             : Theme.textSecondary
         if let dir = currentDirectory {
             let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -574,8 +587,106 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
         }
     }
 
+    // MARK: - Agent process watch
+
+    /// Whether the pane should currently present as its agent (Claude / CLI):
+    /// it was created as one AND that process is alive. Once the agent exits we
+    /// present as a plain shell.
+    var isAgentDisplayActive: Bool { paneType.isAgent && agentProcessLive }
+
+    /// Label shown in the title / tab: falls back to "shell" once the agent
+    /// process has exited.
+    var displayLabel: String {
+        (paneType.isAgent && !agentProcessLive) ? "shell" : paneType.label
+    }
+
+    override var claudeBordersActive: Bool {
+        super.claudeBordersActive && agentProcessLive
+    }
+
+    private func startAgentWatch() {
+        agentPollTimer?.invalidate()
+        agentPollTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
+            self?.pollAgentProcess()
+        }
+    }
+
+    private func pollAgentProcess() {
+        guard paneType.isAgent else { return }
+        if agentProcessIsAlive() {
+            hasSeenAgentAlive = true
+            setAgentProcessLive(true)
+        } else if hasSeenAgentAlive {
+            // We saw it running and now it's gone — it exited.
+            setAgentProcessLive(false)
+        } else {
+            // Never observed alive yet — give it a grace window to launch
+            // (slow start, or "claude" not installed) before falling back.
+            agentPollCount += 1
+            if agentPollCount >= 4 { setAgentProcessLive(false) }  // ~16s
+        }
+    }
+
+    private func setAgentProcessLive(_ live: Bool) {
+        guard live != agentProcessLive else { return }
+        agentProcessLive = live
+        if !live {
+            // Fell back to a bare shell — drop the agent state.
+            agentState = .idle
+            outputParser.reset()
+        }
+        updateTitleBar()
+        updateBorderForState()
+        manager?.tabBar?.update()
+        manager?.statusBar?.update()
+    }
+
+    /// True iff the shell has a direct child process that is this pane's agent —
+    /// for Claude, a child with a `~/.claude/sessions/<pid>.json`; for an agent
+    /// CLI, a child whose name matches the launch command.
+    private func agentProcessIsAlive() -> Bool {
+        guard let proc = terminalView.process else { return false }
+        let shellPid = proc.shellPid
+        guard shellPid > 0 else { return false }
+        let agentCmd = paneType.agentCLI?.command
+
+        // Cheap + reliable: the terminal's foreground process group. If it's the
+        // shell itself, the shell is at its prompt → no agent running.
+        let fd = proc.childfd
+        let fg: pid_t = fd >= 0 ? tcgetpgrp(fd) : -1
+        if fg > 0 && fg == shellPid { return false }
+        // For an agent CLI, any non-shell foreground program counts as the agent
+        // (its process name may differ from the command, e.g. node).
+        if fg > 0, agentCmd != nil { return true }
+
+        // Claude (or when tcgetpgrp is unavailable): scan the shell's children.
+        let maxPids = 4096
+        var pids = [pid_t](repeating: 0, count: maxPids)
+        let bytes = proc_listpids(UInt32(PROC_ALL_PIDS), 0, &pids, Int32(maxPids * MemoryLayout<pid_t>.size))
+        let count = Int(bytes) / MemoryLayout<pid_t>.size
+        for i in 0..<count {
+            let pid = pids[i]
+            guard pid > 0 else { continue }
+            var info = proc_bsdshortinfo()
+            let n = proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdshortinfo>.size))
+            guard n > 0, info.pbsi_ppid == UInt32(shellPid) else { continue }
+            // Direct child of our shell.
+            if paneType == .claude {
+                let f = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".claude/sessions/\(pid).json")
+                if FileManager.default.fileExists(atPath: f.path) { return true }
+            }
+            if let agentCmd {
+                var nameBuf = [CChar](repeating: 0, count: 256)
+                if proc_name(pid, &nameBuf, 256) > 0, String(cString: nameBuf) == agentCmd { return true }
+            }
+        }
+        return false
+    }
+
     override func shutdown() {
         costUpdateTimer?.invalidate()
+        agentPollTimer?.invalidate()
         if let obs = fontSizeObserver { NotificationCenter.default.removeObserver(obs) }
         if let dir = zdotdir { ShellEnhancer.cleanup(zdotdir: dir) }
         terminalView.terminate()
