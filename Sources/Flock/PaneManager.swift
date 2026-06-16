@@ -225,8 +225,27 @@ class PaneManager {
         let responder = panes[index].firstResponderView
         responder.window?.makeFirstResponder(responder)
         closeFindBar()
+
+        // En mode maximisé, la grille ne rend que le tab node actif. Sans ce
+        // relayout, changer de session met à jour la TabBar mais pas le pane
+        // affiché.
+        if isMaximized {
+            showMaximizedActiveTab(animated: true)
+        }
+
         tabBar?.update()
         statusBar?.update()
+    }
+
+    /// Affiche le tab node actif en plein écran après un changement de focus
+    /// pendant le mode maximisé. Restaure l'alpha des panes qui redeviennent
+    /// visibles (ils ont pu être laissés à alphaValue 0 par le fade-out d'entrée).
+    private func showMaximizedActiveTab(animated: Bool) {
+        gridContainer?.layoutPanes(animated: animated)   // gère isHidden par tab node
+        guard let activeTab = activeTabIndex, activeTab < tabNodes.count else { return }
+        for pane in tabNodes[activeTab].allLeaves {
+            if animated { pane.animateFadeIn() } else { pane.alphaValue = 1 }
+        }
     }
 
     func toggleMaximize() {
