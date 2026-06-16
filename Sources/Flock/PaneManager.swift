@@ -479,7 +479,7 @@ class PaneManager {
 
     private func sessionPane(for pane: FlockPane) -> SessionPane {
         if let mp = pane as? MarkdownPane {
-            return SessionPane(type: "markdown", workingDirectory: mp.filePath, customName: mp.customName, sessionId: nil)
+            return SessionPane(type: "markdown", workingDirectory: mp.filePath, customName: mp.customName, sessionId: nil, draft: nil)
         }
         // Try multiple sources for working directory:
         // 1. OSC 7 reported directory (most accurate when shell is in foreground)
@@ -489,21 +489,29 @@ class PaneManager {
         let dir = pane.currentDirectory
             ?? termPane?.processWorkingDirectory()
             ?? termPane?.contextDirectory
+        // If the agent process has exited, the pane is really a shell now — save
+        // it as one so restore opens a shell in this directory instead of trying
+        // to relaunch/resume the agent.
+        let agentLive = termPane?.agentProcessLive ?? true
         // Use the session ID captured from the process's open files at shutdown
-        let sessionId: String? = pane.paneType == .claude
+        let sessionId: String? = (pane.paneType == .claude && agentLive)
             ? termPane?.resumeSessionId ?? "resume"
             : nil
         let typeString: String
         switch pane.paneType {
-        case .claude: typeString = "claude"
-        case .agent(let cli): typeString = "agent:\(cli.id)"
+        case .claude: typeString = agentLive ? "claude" : "shell"
+        case .agent(let cli): typeString = agentLive ? "agent:\(cli.id)" : "shell"
         default: typeString = "shell"
         }
+        // Capture the unsent command line only for panes that are a shell at the
+        // prompt (not a live agent TUI).
+        let draft: String? = (termPane?.isAgentDisplayActive == false) ? termPane?.currentInputDraft() : nil
         return SessionPane(
             type: typeString,
             workingDirectory: dir,
             customName: pane.customName,
-            sessionId: sessionId
+            sessionId: sessionId,
+            draft: draft
         )
     }
 
@@ -566,7 +574,7 @@ class PaneManager {
         } else {
             type = sp.type == "shell" ? .shell : .claude
         }
-        let pane = TerminalPane(type: type, manager: self, workingDirectory: sp.workingDirectory)
+        let pane = TerminalPane(type: type, manager: self, workingDirectory: sp.workingDirectory, draft: sp.draft)
         pane.customName = sp.customName
         if type == .claude, let sid = sp.sessionId {
             pane.shouldResume = true
