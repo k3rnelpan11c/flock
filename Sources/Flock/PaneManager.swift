@@ -709,6 +709,10 @@ class PaneManager {
 
     func handleClick(event: NSEvent) {
         for (i, pane) in panes.enumerated() {
+            // Skip hidden panes — in maximized mode the non-active tab's panes
+            // keep their old (quadrant) frames; without this a click inside the
+            // maximized pane could hit-test a hidden pane and switch to it.
+            if pane.isHidden { continue }
             let pt = pane.convert(event.locationInWindow, from: nil)
             if pane.bounds.contains(pt) {
                 if i != activePaneIndex { focusPane(at: i) }
