@@ -24,6 +24,7 @@ class FlockPane: NSView {
     let titleProcessLabel = NSTextField(labelWithString: "")
     let titleCwdLabel = NSTextField(labelWithString: "")
     let titleCostLabel = NSTextField(labelWithString: "")
+    let micButton = NSButton()   // voice-dictation mic indicator (Claude panes)
     let titleBarHeight: CGFloat = 24
 
     // Shared state -- subclasses modify directly
@@ -162,6 +163,20 @@ class FlockPane: NSView {
         titleCostLabel.isHidden = paneType != .claude
         paneTitleBar.addSubview(titleCostLabel)
 
+        // Voice-dictation mic indicator (Claude panes only)
+        micButton.isBordered = false
+        micButton.bezelStyle = .regularSquare
+        micButton.imagePosition = .imageOnly
+        micButton.imageScaling = .scaleProportionallyDown
+        micButton.target = self
+        micButton.action = #selector(micButtonTapped)
+        micButton.isHidden = true
+        paneTitleBar.addSubview(micButton)
+        updateMicButton()
+        // Re-check permission when returning to Flock (user may grant in Settings).
+        NotificationCenter.default.addObserver(self, selector: #selector(appBecameActive),
+                                               name: NSApplication.didBecomeActiveNotification, object: nil)
+
         updateTitleBar()
 
         // Theme observer
@@ -180,6 +195,55 @@ class FlockPane: NSView {
     func updateTitleBar() {
         titleProcessLabel.stringValue = customName ?? paneType.label
         titleCwdLabel.stringValue = ""
+    }
+
+    // MARK: - Voice dictation (microphone)
+
+    @objc private func appBecameActive() { updateMicButton() }
+
+    @objc private func micButtonTapped() {
+        switch VoiceMode.micStatus {
+        case .notDetermined:
+            VoiceMode.requestMic { [weak self] _ in self?.updateMicButton() }
+        case .denied, .restricted:
+            VoiceMode.openMicSettings()
+        case .authorized:
+            showVoiceHint()
+        @unknown default:
+            VoiceMode.requestMic { [weak self] _ in self?.updateMicButton() }
+        }
+    }
+
+    private func showVoiceHint() {
+        let alert = NSAlert()
+        alert.messageText = "Voice dictation is ready"
+        alert.informativeText = "In this Claude pane, type /voice then hold Space to dictate — your speech is transcribed into the prompt."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    /// Updates the mic indicator's visibility/icon/tooltip from the current
+    /// microphone permission. Shown only on Claude panes (where `/voice` lives).
+    func updateMicButton() {
+        guard paneType == .claude else { micButton.isHidden = true; return }
+        micButton.isHidden = false
+        let symbol: String, color: NSColor, tip: String
+        switch VoiceMode.micStatus {
+        case .authorized:
+            symbol = "mic.fill"; color = Theme.accent
+            tip = "Microphone ready — use /voice in Claude, then hold Space"
+        case .denied, .restricted:
+            symbol = "mic.slash.fill"; color = NSColor(hex: 0xFF3B30)
+            tip = "Microphone blocked — click to open System Settings"
+        default:
+            symbol = "mic"; color = Theme.textTertiary
+            tip = "Voice dictation available — click to allow the microphone"
+        }
+        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+        micButton.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Voice dictation")?
+            .withSymbolConfiguration(config)
+        micButton.contentTintColor = color
+        micButton.toolTip = tip
     }
 
     /// Override in subclasses that support full-text search outside the terminal find API.
@@ -354,7 +418,12 @@ class FlockPane: NSView {
             costW = ceil(titleCostLabel.frame.width) + 8  // 8px breathing room
         }
         let barW = paneTitleBar.bounds.width
-        titleProcessLabel.frame = CGRect(x: 8, y: labelY, width: barW / 2 - 12, height: labelH)
+        let micVisible = !micButton.isHidden
+        if micVisible {
+            micButton.frame = CGRect(x: 6, y: labelY - 1, width: 18, height: labelH + 2)
+        }
+        let procX: CGFloat = micVisible ? 26 : 8
+        titleProcessLabel.frame = CGRect(x: procX, y: labelY, width: max(20, barW / 2 - 4 - procX), height: labelH)
         titleCwdLabel.frame = CGRect(x: barW / 2, y: labelY, width: barW / 2 - 8 - costW, height: labelH)
         if costW > 0 {
             titleCostLabel.frame = CGRect(x: barW - costW - 8, y: labelY, width: costW, height: labelH)
