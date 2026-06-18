@@ -154,6 +154,9 @@ class CommandPalette {
                 guard let win = self?.window else { return }
                 PreferencesView.show(on: win)
             },
+            CommandAction(name: "Allow Microphone (Voice Dictation)", shortcut: "", category: "View") {
+                VoiceMode.promptOrOpenSettings()
+            },
             CommandAction(name: "Find in Terminal", shortcut: "⌘F", category: "View") { [weak self] in
                 self?.paneManager?.showFindBar()
             },
