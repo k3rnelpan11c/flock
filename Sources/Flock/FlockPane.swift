@@ -163,11 +163,15 @@ class FlockPane: NSView {
         titleCostLabel.isHidden = paneType != .claude
         paneTitleBar.addSubview(titleCostLabel)
 
-        // Voice-dictation mic indicator (Claude panes only)
+        // Voice-dictation mic indicator (Claude panes only).
+        // Styled like Flock's other SF-symbol buttons (cf. FindBarView).
         micButton.isBordered = false
-        micButton.bezelStyle = .regularSquare
+        micButton.wantsLayer = true
+        micButton.layer?.cornerRadius = 4
+        micButton.bezelStyle = .inline
+        micButton.setButtonType(.momentaryPushIn)
+        (micButton.cell as? NSButtonCell)?.highlightsBy = []
         micButton.imagePosition = .imageOnly
-        micButton.imageScaling = .scaleProportionallyDown
         micButton.target = self
         micButton.action = #selector(micButtonTapped)
         micButton.isHidden = true
@@ -239,7 +243,7 @@ class FlockPane: NSView {
             symbol = "mic"; color = Theme.textTertiary
             tip = "Voice dictation available — click to allow the microphone"
         }
-        let config = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+        let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
         micButton.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Voice dictation")?
             .withSymbolConfiguration(config)
         micButton.contentTintColor = color
